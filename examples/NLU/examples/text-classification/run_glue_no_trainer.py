@@ -559,8 +559,8 @@ def main():
     optimizer, weight_opt = get_optimizer(args, model)
 
     # Prepare everything with our `accelerator`.
-    model, weight_opt, train_dataloader, eval_dataloader = accelerator.prepare(
-        model, weight_opt, train_dataloader, eval_dataloader
+    model, weight_opt, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
+        model, weight_opt, optimizer, train_dataloader, eval_dataloader
     )
 
     # Note -> the training dataloader needs to be prepared before we grab h`is length below (cause its length will be
