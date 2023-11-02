@@ -1,3 +1,4 @@
+git pull
 TASK_NAMES=("rte")
 BATCH_SIZE="32"
 LEARNING_RATES=("2e-5" "2e-4" "1e-4" "1e-5")
