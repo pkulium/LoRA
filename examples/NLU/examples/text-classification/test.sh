@@ -1,7 +1,7 @@
 git pull
 TASK_NAMES=("rte")
 BATCH_SIZE="32"
-LEARNING_RATES=("3e-5" 4e-5" 5e-5" 6e-5" 7e-5" )
+LEARNING_RATES=("1e-5" "2e-5" "3e-5" 4e-5" 5e-5" 6e-5" 7e-5" )
 ADMM_RHOS=("4e-3")
 
 for TASK_NAME in ${TASK_NAMES[*]}
@@ -18,11 +18,13 @@ for TASK_NAME in ${TASK_NAMES[*]}
             --task_name $TASK_NAME \
             --do_train \
             --do_eval \
-            --max_seq_length 128 \
+            --gradient_accumulation_steps=1 \
             --per_device_train_batch_size 32 \
+            --per_device_eval_batch_size=128  \
             --learning_rate $LEARNING_RATE \
             --num_train_epochs 10 \
             --output_dir /tmp/$TASK_NAME/$LEARNING_RATE
+            --overwrite_output_dir \
         done
     done
 done
