@@ -174,15 +174,15 @@ class ModelArguments:
         },
     )
     apply_lora: Optional[bool] = field(
-        default=False,
+        default=True,
         metadata={"help": "Whether to apply LoRA or not."},
     )
     lora_alpha: Optional[int] = field(
-        default=None,
+        default=32,
         metadata={"help": "LoRA alpha"},
     )
     lora_r: Optional[int] = field(
-        default=None,
+        default=16,
         metadata={"help": "LoRA r"},
     )
     lora_path: Optional[str] = field(
