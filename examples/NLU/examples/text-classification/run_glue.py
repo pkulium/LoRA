@@ -218,6 +218,116 @@ class ModelArguments:
         metadata={"help": "Token Masking Probability"},
     )
 
+import torch
+from torch import autograd, nn
+import torch.nn.functional as F
+import math
+
+class VRPGE_Linear(nn.Linear):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scores = nn.Parameter(torch.rand_like(self.weight))
+        self.register_buffer('subnet', torch.zeros_like(self.scores))
+        self.train_weights = False
+        # nn.init.kaiming_uniform_(self.scores, a=math.sqrt(5))
+        score_init_constant = 0.5
+        self.scores.data = (
+                torch.ones_like(self.scores) * score_init_constant
+        )
+        self.prune = True
+        self.register_buffer("stored_mask_0", torch.zeros_like(self.scores))
+        self.register_buffer("stored_mask_1", torch.zeros_like(self.scores))
+        self.j = 0
+
+    @property
+    def clamped_scores(self):
+        return self.scores
+
+    def fix_subnet(self):
+        self.subnet = (torch.rand_like(self.scores) < self.clamped_scores).float()
+
+    def forward(self, x):
+        if self.prune:
+            if not self.train_weights:
+                self.subnet = StraightThroughBinomialSampleNoGrad.apply(self.scores) 
+                if self.j == 0:
+                    self.stored_mask_0.data = (self.subnet-self.scores)/torch.sqrt((self.scores+1e-20)*(1-self.scores+1e-20))
+                else:
+                    self.stored_mask_1.data = (self.subnet-self.scores)/torch.sqrt((self.scores+1e-20)*(1-self.scores+1e-20))
+                w = self.weight * self.subnet
+                x = F.linear(x, w, self.bias)
+            else:
+                w = self.weight * self.subnet
+                x = F.linear(x, w, self.bias)
+        else:
+            x = F.linear(x, self.weight, self.bias)
+        return x
+
+class StraightThroughBinomialSampleNoGrad(autograd.Function):
+    @staticmethod
+    def forward(ctx, scores):
+        output = (torch.rand_like(scores) < scores).float()
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_outputs):
+        return torch.zeros_like(grad_outputs)
+
+def make_VRPGE_layer(layer):
+    new_layer = VRPGE_Linear(
+        in_features=layer.in_features,
+        out_features=layer.out_features,
+        bias=layer.bias is None,
+    )
+    
+    new_layer.weight = nn.Parameter(layer.weight.detach())
+    
+    if layer.bias is not None:
+        new_layer.bias = nn.Parameter(layer.bias.detach())
+    
+    return new_layer
+
+
+def make_VRPGE_replace(model, depth=1, path="", verbose=True):
+    if depth > 10:
+        return
+    depth += 1
+        
+    if isinstance(model, nn.Linear) and "attention" in path:
+        if verbose:
+            print(f"Find linear {path}:{key} :", type(module))
+
+        return make_VRPGE_layer(model)
+    
+    for key in dir(model):
+        module = getattr(model, key)
+        module_type = type(module)
+            
+        if not isinstance(module, nn.Module) or module is model:
+            continue
+
+        if isinstance(module, nn.Linear) and "attention" in path:
+            layer = make_VRPGE_layer(module)
+            setattr(model, key, layer)
+            if verbose:
+                print(f"Find linear {path}:{key} :", type(module))
+            
+        elif isinstance(module, nn.ModuleList):
+            for i, elem in enumerate(module):
+                layer = make_VRPGE_replace(elem, depth, path+":"+key+f"[{i}]", verbose=verbose)
+                if layer is not None:
+                    module[i] = layer
+                
+        elif isinstance(module, nn.ModuleDict):
+            for module_key, item in module.items():
+                layer = make_VRPGE_replace(item, depth, path+":"+key+":"+module_key, verbose=verbose)
+                if layer is not None:
+                    module[module_key] = layer
+                
+        else:
+            layer = make_VRPGE_replace(module, depth, path+":"+key, verbose=verbose)
+            if layer is not None:
+                setattr(model, key, layer)
     
 def main():
     # See all possible arguments in src/transformers/training_args.py
@@ -374,6 +484,7 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
+    
 
     trainable_params = []
     if model_args.apply_lora:
