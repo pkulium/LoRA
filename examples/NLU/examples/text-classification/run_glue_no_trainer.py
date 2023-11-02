@@ -541,7 +541,7 @@ def main():
     # Split weights in two groups, one with weight decay and the other not.
     args.optimizer = 'adam'
     args.lr = 12e-3
-    args.K = 2
+    args.K = 20
     args.train_weights_at_the_same_time = True
     args.nesterov = False
     # optimizer, weight_opt = get_optimizer(args, model)
