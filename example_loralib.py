@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
-# # LoRA: Low Rank Adaptation of Large Language Models
-# 
-# Original Paper: https://arxiv.org/pdf/2106.09685.pdf
-
-# ### Set TPU = False below if using GPU
-
-# In[2]:
 
 
 TPU = False
@@ -19,20 +9,7 @@ if TPU==True:
 else:
     device = 'cuda'
 
-
-# In[ ]:
-
-
-# !pip install loralib
-# !pip install torchsummary
-# !pip install datasets
-# !pip install transformers
-# !pip install sentencepiece ## For faster tokenization
-
-
-# In[ ]:
-
-
+ 
 import numpy as np
 import torch
 import torch.nn as nn
@@ -53,15 +30,8 @@ from transformers import CONFIG_MAPPING
 from transformers import AutoConfig
 
 
-# ## LoRA Functions
 
-# In[ ]:
-
-
-## Set max matrix rank
-lora_r = 4
-
-def make_lora_layer(layer, lora_r=4):
+def make_lora_layer(layer, lora_r=16):
     new_layer = lora.Linear(
         in_features=layer.in_features,
         out_features=layer.out_features,
@@ -120,10 +90,6 @@ def make_lora_replace(model, depth=1, path="", verbose=True):
                 setattr(model, key, layer)
 
 
-# ## Fetch Data, Models
-
-# In[ ]:
-
 
 dataset_id, task, tok_train_fold, sentence1_key, num_labels, vocab_len = 'tweet_eval', 'emotion', 'train', 'text', 4, 30000
 
@@ -143,31 +109,14 @@ tokenizer = AutoTokenizer.from_pretrained(model_name)
 collator = DataCollatorWithPadding(tokenizer)
 
 
-# In[ ]:
-
 
 if USE_LORA:
-#     first_output = model(**collator([tokenizer('test')]))
-
     make_lora_replace(model, verbose=True)
-
-#     final_output = model(**collator([tokenizer('test')]))
-
-
-# In[ ]:
-
 
 ## Load omdel onto TPU/GPU
 model = model.to(device)
-# tokenizer = tokenizer.to(device)
 
-
-# ## Apply LoRA to model 
-
-# In[ ]:
-
-
-lora_r = 4 ## Try different max matrix ranks for different results
+lora_r = 16 ## Try different max matrix ranks for different results
 
 total_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Total trainable parameters before LoRA: {total_trainable_params}")
@@ -179,27 +128,11 @@ total_trainable_params = sum(p.numel() for p in model.parameters() if p.requires
 print(f"Total trainable parameters after LoRA: {total_trainable_params}")
 
 
-# In[ ]:
-
 
 for name, param in model.named_parameters():
     if "deberta" not in name:
         print(name)
-#             print(param.shape)
         param.requires_grad = True
-
-
-# In[ ]:
-
-
-# import wandb
-
-# wandb.init(project='Lora')
-
-
-# ## Process Training Data
-
-# In[ ]:
 
 
 def preprocess_function(examples):
