@@ -539,19 +539,21 @@ def main():
 
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
-    no_decay = ["bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters() if "scores" not in n and not any(nd in n for nd in no_decay)],
-            "weight_decay": args.weight_decay,
-        },
-        {
-            "params": [p for n, p in model.named_parameters() if "scores" not in n and any(nd in n for nd in no_decay)],
-            "weight_decay": 0.0,
-        },
+
+    # no_decay = ["bias", "LayerNorm.weight"]
+    # optimizer_grouped_parameters = [
+    #     {
+    #         "params": [p for n, p in model.named_parameters() if "scores" not in n and not any(nd in n for nd in no_decay)],
+    #         "weight_decay": args.weight_decay,
+    #     },
+    #     {
+    #         "params": [p for n, p in model.named_parameters() if "scores" not in n and any(nd in n for nd in no_decay)],
+    #         "weight_decay": 0.0,
+    #     },
         
-    ]
-    optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
+    # ]
+    # optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
+    
     args.optimizer = 'adam'
     args.lr = 12e-3
     args.K = 5
