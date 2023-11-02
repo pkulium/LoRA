@@ -271,12 +271,12 @@ def make_VRPGE_replace(model, depth=1, path="", verbose=True):
                 setattr(model, key, layer)
     
 def get_optimizer(args, model):
-    for n, v in model.named_parameters():
-        if v.requires_grad:
-            print("<DEBUG> gradient to", n)
+    # for n, v in model.named_parameters():
+    #     if v.requires_grad:
+    #         print("<DEBUG> gradient to", n)
 
-        if not v.requires_grad:
-            print("<DEBUG> no gradient to", n)
+    #     if not v.requires_grad:
+    #         print("<DEBUG> no gradient to", n)
 
     if args.optimizer == "sgd":
         if not args.train_weights_at_the_same_time:
