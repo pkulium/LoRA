@@ -16,7 +16,7 @@ import torch.nn as nn
 from torch.optim import Adam
 from torchsummary import summary
 import loralib as lora
-import lora_local
+import lora_custom
 from transformers import DataCollatorForSeq2Seq, get_cosine_schedule_with_warmup
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoModelForSequenceClassification, TrainingArguments, Trainer
@@ -31,7 +31,7 @@ from transformers import CONFIG_MAPPING
 from transformers import AutoConfig
 
 def make_lora_layer(layer, lora_r=16):
-    new_layer = lora_local.Linear(
+    new_layer = lora_custom.Linear(
         in_features=layer.in_features,
         out_features=layer.out_features,
         bias=layer.bias is None,
@@ -121,7 +121,7 @@ total_trainable_params = sum(p.numel() for p in model.parameters() if p.requires
 print(f"Total trainable parameters before LoRA: {total_trainable_params}")
 
 ## Apply LoRA
-lora_local.mark_only_lora_as_trainable(model)
+lora_custom.mark_only_lora_as_trainable(model)
 
 total_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Total trainable parameters after LoRA: {total_trainable_params}")
@@ -229,7 +229,7 @@ for i in range(epochs):
         checkpoint_path = "best_lora_checkpoint.pth"
         
         if USE_LORA:
-            torch.save(lora.lora_state_dict(model), checkpoint_path)
+            torch.save(lora_custom.lora_state_dict(model), checkpoint_path)
         else:
             torch.save(model.state_dict(), checkpoint_path)
 
