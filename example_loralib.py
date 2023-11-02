@@ -127,7 +127,7 @@ def make_lora_replace(model, depth=1, path="", verbose=True):
 
 dataset_id, task, tok_train_fold, sentence1_key, num_labels, vocab_len = 'tweet_eval', 'emotion', 'train', 'text', 4, 30000
 
-dataset = load_dataset(dataset_id, task, script_version="master")
+# dataset = load_dataset(dataset_id, task, script_version="master")
 
 USE_LORA = True
 model_name = 'bert-base-cased'
