@@ -627,17 +627,29 @@ def main():
             with torch.no_grad():
                 constrainScoreByWhole(model, None, None)
 
-        model.eval()
-        for step, batch in enumerate(eval_dataloader):
-            outputs = model(**batch)
-            predictions = outputs.logits.argmax(dim=-1)
-            metric.add_batch(
-                predictions=accelerator.gather(predictions),
-                references=accelerator.gather(batch["labels"]),
-            )
+        # model.eval()
+        # for step, batch in enumerate(eval_dataloader):
+        #     outputs = model(**batch)
+        #     predictions = outputs.logits.argmax(dim=-1)
+        #     metric.add_batch(
+        #         predictions=accelerator.gather(predictions),
+        #         references=accelerator.gather(batch["labels"]),
+        #     )
 
-        eval_metric = metric.compute()
-        logger.info(f"epoch {epoch}: {eval_metric}")
+        # eval_metric = metric.compute()
+        # logger.info(f"epoch {epoch}: {eval_metric}")
+
+    model.eval()
+    for step, batch in enumerate(eval_dataloader):
+        outputs = model(**batch)
+        predictions = outputs.logits.argmax(dim=-1)
+        metric.add_batch(
+            predictions=accelerator.gather(predictions),
+            references=accelerator.gather(batch["labels"]),
+        )
+
+    eval_metric = metric.compute()
+    logger.info(f"epoch {epoch}: {eval_metric}")
 
     if args.output_dir is not None:
         accelerator.wait_for_everyone()
