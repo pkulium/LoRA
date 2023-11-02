@@ -539,6 +539,12 @@ def main():
 
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
+    args.optimizer = 'adam'
+    args.lr = 12e-3
+    args.K = 5
+    args.train_weights_at_the_same_time = True
+    args.nesterov = False
+    # optimizer, weight_opt = get_optimizer(args, model)
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
         {
