@@ -454,12 +454,32 @@ def main():
     ]
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
 
+    # parameters = list(model.named_parameters())
+    # for n, v in parameters:
+    #     if ("score" not in n) and v.requires_grad:
+    #         print(n, "weight_para")
+    # for n, v in parameters:
+    #     if ("score" in n) and v.requires_grad:
+    #         print(n, "score_para")
+    # weight_params = [v for n, v in parameters if ("score" not in n) and v.requires_grad]
+    # score_params = [v for n, v in parameters if ("score" in n) and v.requires_grad]
+    # optimizer1 = torch.optim.Adam(
+    #     score_params, lr=args.lr, weight_decay=args.weight_decay
+    # )
+    # optimizer2 = torch.optim.SGD(
+    #     weight_params,
+    #     args.weight_opt_lr,
+    #     momentum=0.9,
+    #     weight_decay=5e-4,
+    #     nesterov=args.nesterov,
+    # )
+    # return optimizer1, optimizer2
     # Prepare everything with our `accelerator`.
-    model, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
-        model, optimizer, train_dataloader, eval_dataloader
-    )
+    # model, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
+        # model, optimizer, train_dataloader, eval_dataloader
+    # )
 
-    # Note -> the training dataloader needs to be prepared before we grab his length below (cause its length will be
+    # Note -> the training dataloader needs to be prepared before we grab h`is length below (cause its length will be
     # shorter in multiprocess)
 
     # Scheduler and math around the number of training steps.
