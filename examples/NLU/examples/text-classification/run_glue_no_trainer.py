@@ -267,6 +267,86 @@ def make_VRPGE_replace(model, depth=1, path="", verbose=True):
             if layer is not None:
                 setattr(model, key, layer)
     
+def get_optimizer(args, model):
+    for n, v in model.named_parameters():
+        if v.requires_grad:
+            print("<DEBUG> gradient to", n)
+
+        if not v.requires_grad:
+            print("<DEBUG> no gradient to", n)
+
+    if args.optimizer == "sgd":
+        if not args.train_weights_at_the_same_time:
+            parameters = list(model.named_parameters())
+            bn_params = [v for n, v in parameters if ("bn" in n) and v.requires_grad]
+            rest_params = [v for n, v in parameters if ("bn" not in n) and v.requires_grad]
+            optimizer = torch.optim.SGD(
+                [
+                    {
+                        "params": bn_params,
+                        "weight_decay": 0 if args.no_bn_decay else args.weight_decay,
+                    },
+                    {"params": rest_params, "weight_decay": args.weight_decay},
+                ],
+                args.lr,
+                momentum=args.momentum,
+                weight_decay=args.weight_decay,
+                nesterov=args.nesterov,
+            )
+        else:
+            parameters = list(model.named_parameters())
+            for n, v in parameters:
+                if ("score" not in n) and v.requires_grad:
+                    print(n, "weight_para")
+            for n, v in parameters:
+                if ("score" in n) and v.requires_grad:
+                    print(n, "score_para")
+            weight_params = [v for n, v in parameters if ("score" not in n) and v.requires_grad]
+            score_params = [v for n, v in parameters if ("score" in n) and v.requires_grad]
+            optimizer1 = torch.optim.SGD(
+                score_params, lr=0.1, weight_decay=1e-6, momentum=0.9
+            )
+            optimizer2 = torch.optim.SGD(
+                weight_params,
+                args.learning_rate,
+                momentum=0.9,
+                weight_decay=5e-4,
+                nesterov=args.nesterov,
+            )
+            return optimizer1, optimizer2
+
+    elif args.optimizer == "adam":
+        if not args.train_weights_at_the_same_time:
+            optimizer = torch.optim.Adam(
+                filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr, weight_decay=args.weight_decay
+            )
+        else:
+            parameters = list(model.named_parameters())
+            for n, v in parameters:
+                if ("score" not in n) and v.requires_grad:
+                    print(n, "weight_para")
+            for n, v in parameters:
+                if ("score" in n) and v.requires_grad:
+                    print(n, "score_para")
+            weight_params = [v for n, v in parameters if ("score" not in n) and v.requires_grad]
+            score_params = [v for n, v in parameters if ("score" in n) and v.requires_grad]
+            optimizer1 = torch.optim.Adam(
+                score_params, lr=args.lr, weight_decay=args.weight_decay
+            )
+            optimizer2 = torch.optim.SGD(
+                weight_params,
+                args.learning_rate,
+                momentum=0.9,
+                weight_decay=5e-4,
+                nesterov=args.nesterov,
+            )
+            return optimizer1, optimizer2
+    elif args.optimizer == "adamw":
+        optimizer = torch.optim.AdamW(
+            filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr, weight_decay=args.weight_decay
+        )
+    return optimizer, None
+
 
 def main():
     args = parse_args()
@@ -354,7 +434,7 @@ def main():
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
     )
-    # make_VRPGE_replace(model, verbose=True)
+    make_VRPGE_replace(model, verbose=True)
 
     # Preprocessing the datasets
     if args.task_name is not None:
@@ -441,43 +521,26 @@ def main():
 
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
-    no_decay = ["bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-            "weight_decay": args.weight_decay,
-        },
-        {
-            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-            "weight_decay": 0.0,
-        },
-    ]
-    optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
+    # no_decay = ["bias", "LayerNorm.weight"]
+    # optimizer_grouped_parameters = [
+    #     {
+    #         "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+    #         "weight_decay": args.weight_decay,
+    #     },
+    #     {
+    #         "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
+    #         "weight_decay": 0.0,
+    #     },
+    # ]
+    # optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
+    args.optimizer = 'adam'
+    args.lr = 2e-3
+    optimizer, weight_opt = get_optimizer(args, model)
 
-    # parameters = list(model.named_parameters())
-    # for n, v in parameters:
-    #     if ("score" not in n) and v.requires_grad:
-    #         print(n, "weight_para")
-    # for n, v in parameters:
-    #     if ("score" in n) and v.requires_grad:
-    #         print(n, "score_para")
-    # weight_params = [v for n, v in parameters if ("score" not in n) and v.requires_grad]
-    # score_params = [v for n, v in parameters if ("score" in n) and v.requires_grad]
-    # optimizer1 = torch.optim.Adam(
-    #     score_params, lr=args.lr, weight_decay=args.weight_decay
-    # )
-    # optimizer2 = torch.optim.SGD(
-    #     weight_params,
-    #     args.weight_opt_lr,
-    #     momentum=0.9,
-    #     weight_decay=5e-4,
-    #     nesterov=args.nesterov,
-    # )
-    # return optimizer1, optimizer2
     # Prepare everything with our `accelerator`.
-    # model, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
-        # model, optimizer, train_dataloader, eval_dataloader
-    # )
+    model, optimizer, weight_opt, train_dataloader, eval_dataloader = accelerator.prepare(
+        model, optimizer, weight_opt, train_dataloader, eval_dataloader
+    )
 
     # Note -> the training dataloader needs to be prepared before we grab h`is length below (cause its length will be
     # shorter in multiprocess)
