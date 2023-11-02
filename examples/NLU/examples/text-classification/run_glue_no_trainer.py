@@ -539,42 +539,29 @@ def main():
 
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
-    args.optimizer = 'adam'
-    args.lr = 12e-3
-    args.K = 20
-    args.train_weights_at_the_same_time = True
-    args.nesterov = False
-    # optimizer, weight_opt = get_optimizer(args, model)
     no_decay = ["bias", "LayerNorm.weight"]
     optimizer_grouped_parameters = [
         {
             "params": [p for n, p in model.named_parameters() if "scores" not in n and not any(nd in n for nd in no_decay)],
             "weight_decay": args.weight_decay,
-            "lr": args.learning_rate
         },
         {
             "params": [p for n, p in model.named_parameters() if "scores" not in n and any(nd in n for nd in no_decay)],
             "weight_decay": 0.0,
-            "lr": args.learning_rate
         },
-        {
-            "params": [p for n, p in model.named_parameters() if "scores" in n],
-            "weight_decay": 0.0,
-            "lr": args.lr
-        },
+        
     ]
-    optimizer = AdamW(optimizer_grouped_parameters)
-
-    # args.optimizer = 'adam'
-    # args.lr = 12e-3
-    # args.K = 5
-    # args.train_weights_at_the_same_time = True
-    # args.nesterov = False
-    # optimizer, weight_opt = get_optimizer(args, model)
+    optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
+    args.optimizer = 'adam'
+    args.lr = 12e-3
+    args.K = 5
+    args.train_weights_at_the_same_time = True
+    args.nesterov = False
+    optimizer, weight_opt = get_optimizer(args, model)
 
     # Prepare everything with our `accelerator`.
-    model, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
-        model, optimizer, train_dataloader, eval_dataloader
+    model, weight_opt, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
+        model, weight_opt, optimizer, train_dataloader, eval_dataloader
     )
 
     # Note -> the training dataloader needs to be prepared before we grab h`is length below (cause its length will be
@@ -614,15 +601,15 @@ def main():
 
     for epoch in range(args.num_train_epochs):
         model.train()
-        # assign_learning_rate(weight_opt, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate)
-        # assign_learning_rate(optimizer, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate)
+        assign_learning_rate(weight_opt, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate)
+        assign_learning_rate(optimizer, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.lr)
         for step, batch in enumerate(train_dataloader):
             fn_list = []
             l = 0
             if optimizer is not None:
                 optimizer.zero_grad()
-            # if weight_opt is not None:
-                # weight_opt.zero_grad()
+            if weight_opt is not None:
+                weight_opt.zero_grad()
             for j in range(args.K):
                 args.j = j
                 outputs = model(**batch)
@@ -633,26 +620,25 @@ def main():
                 l = l + loss.item()
             fn_avg = l
             calculateGrad(model, fn_avg, fn_list, args)
-            # torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
-            lr_scheduler.step()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
             if optimizer is not None:
                 optimizer.step()
-            # if weight_opt is not None:
-                # weight_opt.step()
+            if weight_opt is not None:
+                weight_opt.step()
             with torch.no_grad():
                 constrainScoreByWhole(model, None, None)
 
-        # model.eval()
-        # for step, batch in enumerate(eval_dataloader):
-        #     outputs = model(**batch)
-        #     predictions = outputs.logits.argmax(dim=-1)
-        #     metric.add_batch(
-        #         predictions=accelerator.gather(predictions),
-        #         references=accelerator.gather(batch["labels"]),
-        #     )
+        model.eval()
+        for step, batch in enumerate(eval_dataloader):
+            outputs = model(**batch)
+            predictions = outputs.logits.argmax(dim=-1)
+            metric.add_batch(
+                predictions=accelerator.gather(predictions),
+                references=accelerator.gather(batch["labels"]),
+            )
 
-        # eval_metric = metric.compute()
-        # logger.info(f"epoch {epoch}: {eval_metric}")
+        eval_metric = metric.compute()
+        logger.info(f"epoch {epoch}: {eval_metric}")
 
     model.eval()
     for step, batch in enumerate(eval_dataloader):
