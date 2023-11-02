@@ -553,13 +553,13 @@ def main():
     # optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
     args.optimizer = 'adam'
     args.lr = 12e-3
-    args.K = 5
+    args.K = 20
     args.train_weights_at_the_same_time = True
     args.nesterov = False
     optimizer, weight_opt = get_optimizer(args, model)
 
     # Prepare everything with our `accelerator`.
-    model, weight_opt, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
+    model, weight_opt, train_dataloader, eval_dataloader = accelerator.prepare(
         model, weight_opt, optimizer, train_dataloader, eval_dataloader
     )
 
