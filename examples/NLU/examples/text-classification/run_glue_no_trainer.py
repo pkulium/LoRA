@@ -336,13 +336,23 @@ def get_optimizer(args, model):
             optimizer1 = torch.optim.Adam(
                 score_params, lr=args.lr, weight_decay=args.weight_decay
             )
-            optimizer2 = torch.optim.SGD(
-                weight_params,
+
+            no_decay = ["bias", "LayerNorm.weight"]
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in model.named_parameters() if "score" not in n and not any(nd in n for nd in no_decay)],
+                    "weight_decay": args.weight_decay,
+                },
+                {
+                    "params": [p for n, p in model.named_parameters() if "score" not in n and any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0,
+                },
+            ]
+            optimizer2 = torch.optim.AdamW(
+                optimizer_grouped_parameters
                 args.learning_rate,
-                momentum=0.9,
-                weight_decay=5e-4,
-                nesterov=args.nesterov,
             )
+            
             return optimizer1, optimizer2
     elif args.optimizer == "adamw":
         optimizer = torch.optim.AdamW(
