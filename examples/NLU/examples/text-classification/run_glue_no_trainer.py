@@ -537,11 +537,11 @@ def main():
     args.lr = 2e-3
     args.train_weights_at_the_same_time = True
     args.nesterov = False
-    optimizer, weight_opt = get_optimizer(args, model)
+    optimizer_mask, optimizer = get_optimizer(args, model)
 
     # Prepare everything with our `accelerator`.
-    model, optimizer, weight_opt, train_dataloader, eval_dataloader = accelerator.prepare(
-        model, optimizer, weight_opt, train_dataloader, eval_dataloader
+    model, optimizer, optimizer_mask, train_dataloader, eval_dataloader = accelerator.prepare(
+        model, optimizer, optimizer_mask, train_dataloader, eval_dataloader
     )
 
     # Note -> the training dataloader needs to be prepared before we grab h`is length below (cause its length will be
