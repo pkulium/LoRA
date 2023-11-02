@@ -16,15 +16,12 @@ for TASK_NAME in ${TASK_NAMES[*]}
             python run_glue_no_trainer.py \
             --model_name_or_path bert-base-cased \
             --task_name $TASK_NAME \
-            --do_train \
-            --do_eval \
             --gradient_accumulation_steps=1 \
             --per_device_train_batch_size 32 \
             --per_device_eval_batch_size=128  \
             --learning_rate $LEARNING_RATE \
             --num_train_epochs 10 \
             --output_dir /tmp/$TASK_NAME/$LEARNING_RATE \
-            --overwrite_output_dir 
         done
     done
 done
