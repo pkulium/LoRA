@@ -535,6 +535,7 @@ def main():
     # optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
     args.optimizer = 'adam'
     args.lr = 2e-3
+    args.train_weights_at_the_same_time = True
     optimizer, weight_opt = get_optimizer(args, model)
 
     # Prepare everything with our `accelerator`.
