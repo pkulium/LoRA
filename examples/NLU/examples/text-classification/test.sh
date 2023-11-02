@@ -13,7 +13,7 @@ for TASK_NAME in ${TASK_NAMES[*]}
     do
         for ADMM_RHO in ${ADMM_RHOS[*]}
         do
-            python run_glue.py \
+            python run_glue_no_trainer.py \
             --model_name_or_path bert-base-cased \
             --task_name $TASK_NAME \
             --do_train \
