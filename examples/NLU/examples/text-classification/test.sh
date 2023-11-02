@@ -21,7 +21,7 @@ for TASK_NAME in ${TASK_NAMES[*]}
             --per_device_train_batch_size 32 \
             --learning_rate $LEARNING_RATE \
             --num_train_epochs 10 \
-            --output_dir /tmp/$TASK_NAME/
+            --output_dir /tmp/$TASK_NAME/$LEARNING_RATE
         done
     done
 done
