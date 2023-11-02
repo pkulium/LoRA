@@ -129,10 +129,10 @@ print(f"Total trainable parameters after LoRA: {total_trainable_params}")
 
 
 
-for name, param in model.named_parameters():
-    if "deberta" not in name:
-        print(name)
-        param.requires_grad = True
+# for name, param in model.named_parameters():
+#     if "deberta" not in name:
+#         print(name)
+#         param.requires_grad = True
 
 
 def preprocess_function(examples):
