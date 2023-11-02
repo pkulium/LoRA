@@ -1,6 +1,6 @@
 TASK_NAMES=("rte")
 BATCH_SIZE="32"
-LEARNING_RATES=("5e-5" "7e-5" "1e-4" "1e-5")
+LEARNING_RATES=("2e-5" "2e-4" "1e-4" "1e-5")
 ADMM_RHOS=("4e-3")
 
 for TASK_NAME in ${TASK_NAMES[*]}
