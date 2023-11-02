@@ -169,7 +169,7 @@ class VRPGE_Linear(nn.Linear):
         super().__init__(*args, **kwargs)
         self.scores = nn.Parameter(torch.rand_like(self.weight))
         self.register_buffer('subnet', torch.zeros_like(self.scores))
-        self.train_weights = False
+        self.train_weights = True
         # nn.init.kaiming_uniform_(self.scores, a=math.sqrt(5))
         score_init_constant = 0.5
         self.scores.data = (
@@ -552,7 +552,7 @@ def main():
     # ]
     # optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
     args.optimizer = 'adam'
-    args.lr = 2e-3
+    args.lr = 12e-3
     args.K = 20
     args.train_weights_at_the_same_time = True
     args.nesterov = False
