@@ -354,7 +354,7 @@ def main():
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
     )
-    
+    make_VRPGE_replace(model, verbose=True)
 
     # Preprocessing the datasets
     if args.task_name is not None:
