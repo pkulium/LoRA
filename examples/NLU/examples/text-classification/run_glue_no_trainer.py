@@ -38,6 +38,9 @@ from transformers import (
     get_scheduler,
     set_seed,
 )
+from utils.schedulers import get_policy, assign_learning_rate
+import numpy as np
+from utils.net_utils import constrainScoreByWhole
 
 
 logger = logging.getLogger(__name__)
@@ -347,6 +350,11 @@ def get_optimizer(args, model):
         )
     return optimizer, None
 
+def calculateGrad(model, fn_avg, fn_list, args):
+    for n, m in model.named_modules():
+        if hasattr(m, "scores") and m.prune:
+            m.scores.grad.data += 1/(args.K-1)*(fn_list[0] - fn_avg)*getattr(m, 'stored_mask_0') + 1/(args.K-1)*(fn_list[1] - fn_avg)*getattr(m, 'stored_mask_1')
+
 
 def main():
     args = parse_args()
@@ -535,13 +543,14 @@ def main():
     # optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
     args.optimizer = 'adam'
     args.lr = 2e-3
+    args.K = 20
     args.train_weights_at_the_same_time = True
     args.nesterov = False
-    optimizer_mask, optimizer = get_optimizer(args, model)
+    optimizer, weight_opt = get_optimizer(args, model)
 
     # Prepare everything with our `accelerator`.
-    model, optimizer, optimizer_mask, train_dataloader, eval_dataloader = accelerator.prepare(
-        model, optimizer, optimizer_mask, train_dataloader, eval_dataloader
+    model, optimizer, weight_opt, train_dataloader, eval_dataloader = accelerator.prepare(
+        model, optimizer, weight_opt, train_dataloader, eval_dataloader
     )
 
     # Note -> the training dataloader needs to be prepared before we grab h`is length below (cause its length will be
@@ -581,21 +590,33 @@ def main():
 
     for epoch in range(args.num_train_epochs):
         model.train()
+        assign_learning_rate(weight_opt, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate)
+        assign_learning_rate(optimizer, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.lr)
         for step, batch in enumerate(train_dataloader):
-            outputs = model(**batch)
-            loss = outputs.loss
-            loss = loss / args.gradient_accumulation_steps
-            accelerator.backward(loss)
-            if step % args.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
-                optimizer.step()
-                lr_scheduler.step()
+            fn_list = []
+            l = 0
+            if optimizer is not None:
                 optimizer.zero_grad()
-                progress_bar.update(1)
-                completed_steps += 1
-
-            if completed_steps >= args.max_train_steps:
-                break
-
+            if weight_opt is not None:
+                weight_opt.zero_grad()
+            for j in range(args.K):
+                args.j = j
+                outputs = model(**batch)
+                original_loss = outputs.loss
+                loss = original_loss/args.K
+                fn_list.append(loss.item()*args.K)
+                accelerator.backward(loss)
+                l = l + loss.item()
+            fn_avg = l
+            calculateGrad(model, fn_avg, fn_list, args)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
+            if optimizer is not None:
+                optimizer.step()
+            if weight_opt is not None:
+                weight_opt.step()
+            with torch.no_grad():
+                constrainScoreByWhole(model, None, None)
+                
         model.eval()
         for step, batch in enumerate(eval_dataloader):
             outputs = model(**batch)
