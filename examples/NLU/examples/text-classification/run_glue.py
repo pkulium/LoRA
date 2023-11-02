@@ -349,7 +349,7 @@ def main():
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
-        cls_dropout=training_args.cls_dropout,
+        # cls_dropout=training_args.cls_dropout,
         apply_lora=model_args.apply_lora,
         lora_alpha=model_args.lora_alpha,
         lora_r=model_args.lora_r,
