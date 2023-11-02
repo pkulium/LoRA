@@ -349,10 +349,10 @@ def get_optimizer(args, model):
                 },
             ]
             optimizer2 = torch.optim.AdamW(
-                optimizer_grouped_parameters
+                optimizer_grouped_parameters,
                 args.learning_rate,
             )
-            
+
             return optimizer1, optimizer2
     elif args.optimizer == "adamw":
         optimizer = torch.optim.AdamW(
