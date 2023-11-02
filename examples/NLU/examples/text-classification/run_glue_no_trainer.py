@@ -615,7 +615,7 @@ def main():
                 original_loss = outputs.loss
                 loss = original_loss/args.K
                 fn_list.append(loss.item()*args.K)
-                accelerator.backward(loss)
+                accelerator.backward(loss, retain_graph=True)
                 l = l + loss.item()
             fn_avg = l
             calculateGrad(model, fn_avg, fn_list, args)
