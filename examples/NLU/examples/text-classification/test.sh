@@ -23,8 +23,8 @@ for TASK_NAME in ${TASK_NAMES[*]}
             --per_device_eval_batch_size=128  \
             --learning_rate $LEARNING_RATE \
             --num_train_epochs 10 \
-            --output_dir /tmp/$TASK_NAME/$LEARNING_RATE
-            --overwrite_output_dir \
+            --output_dir /tmp/$TASK_NAME/$LEARNING_RATE \
+            --overwrite_output_dir 
         done
     done
 done
