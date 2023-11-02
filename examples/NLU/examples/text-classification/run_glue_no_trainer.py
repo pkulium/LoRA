@@ -541,7 +541,7 @@ def main():
     # Split weights in two groups, one with weight decay and the other not.
     args.optimizer = 'adam'
     args.lr = 12e-3
-    args.K = 5
+    args.K = 2
     args.train_weights_at_the_same_time = True
     args.nesterov = False
     # optimizer, weight_opt = get_optimizer(args, model)
@@ -615,7 +615,7 @@ def main():
     for epoch in range(args.num_train_epochs):
         model.train()
         # assign_learning_rate(weight_opt, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate)
-        assign_learning_rate(optimizer, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate)
+        # assign_learning_rate(optimizer, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate)
         for step, batch in enumerate(train_dataloader):
             fn_list = []
             l = 0
@@ -633,7 +633,8 @@ def main():
                 l = l + loss.item()
             fn_avg = l
             calculateGrad(model, fn_avg, fn_list, args)
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
+            lr_scheduler.step()
             if optimizer is not None:
                 optimizer.step()
             # if weight_opt is not None:
