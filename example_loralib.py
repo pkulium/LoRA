@@ -16,6 +16,7 @@ import torch.nn as nn
 from torch.optim import Adam
 from torchsummary import summary
 import loralib as lora
+import lora_local
 from transformers import DataCollatorForSeq2Seq, get_cosine_schedule_with_warmup
 from torch.utils.data import Dataset, DataLoader
 from transformers import AutoModelForSequenceClassification, TrainingArguments, Trainer
@@ -29,10 +30,8 @@ from transformers import AutoModelForSequenceClassification
 from transformers import CONFIG_MAPPING 
 from transformers import AutoConfig
 
-from . import loralib 
-
 def make_lora_layer(layer, lora_r=16):
-    new_layer = lora.Linear(
+    new_layer = lora_local.Linear(
         in_features=layer.in_features,
         out_features=layer.out_features,
         bias=layer.bias is None,
@@ -122,7 +121,7 @@ total_trainable_params = sum(p.numel() for p in model.parameters() if p.requires
 print(f"Total trainable parameters before LoRA: {total_trainable_params}")
 
 ## Apply LoRA
-lora.mark_only_lora_as_trainable(model)
+lora_local.mark_only_lora_as_trainable(model)
 
 total_trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
 print(f"Total trainable parameters after LoRA: {total_trainable_params}")
