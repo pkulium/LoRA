@@ -559,7 +559,7 @@ def main():
     optimizer, weight_opt = get_optimizer(args, model)
 
     # Prepare everything with our `accelerator`.
-    model, weight_opt, train_dataloader, eval_dataloader = accelerator.prepare(
+    model, weight_opt, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
         model, weight_opt, optimizer, train_dataloader, eval_dataloader
     )
 
