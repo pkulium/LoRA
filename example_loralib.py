@@ -29,7 +29,7 @@ from transformers import AutoModelForSequenceClassification
 from transformers import CONFIG_MAPPING 
 from transformers import AutoConfig
 
-
+from . import loralib 
 
 def make_lora_layer(layer, lora_r=16):
     new_layer = lora.Linear(
