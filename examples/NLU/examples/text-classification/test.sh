@@ -1,7 +1,7 @@
 git pull
 TASK_NAMES=("rte")
 BATCH_SIZE="32"
-LEARNING_RATES=("1e-5" "2e-5" "3e-5" 4e-5" 5e-5" 6e-5" 7e-5" )
+# LEARNING_RATES=("1e-5" "2e-5" "3e-5" 4e-5" 5e-5" 6e-5" 7e-5" )
 LEARNING_RATES=("2e-5" )
 ADMM_RHOS=("4e-3")
 
@@ -14,7 +14,7 @@ for TASK_NAME in ${TASK_NAMES[*]}
     do
         for ADMM_RHO in ${ADMM_RHOS[*]}
         do
-            python run_glue_no_trainer.py \
+            python -m pdb run_glue_no_trainer.py \
             --model_name_or_path bert-base-cased \
             --task_name $TASK_NAME \
             --gradient_accumulation_steps=1 \
