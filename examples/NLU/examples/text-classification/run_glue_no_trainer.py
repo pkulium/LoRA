@@ -116,6 +116,12 @@ def parse_args():
         default=5e-5,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
+    parser.add_argument(
+        "--learning_rate_mask",
+        type=float,
+        default=5e-5,
+        help="Initial learning rate (after the potential warmup period) to use.",
+    )
     parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay to use.")
     parser.add_argument("--num_train_epochs", type=int, default=3, help="Total number of training epochs to perform.")
     parser.add_argument(
@@ -291,7 +297,7 @@ def get_optimizer(args, model):
                     },
                     {"params": rest_params, "weight_decay": args.weight_decay},
                 ],
-                args.lr,
+                args.learning_rate_mask,
                 momentum=args.momentum,
                 weight_decay=args.weight_decay,
                 nesterov=args.nesterov,
@@ -321,7 +327,7 @@ def get_optimizer(args, model):
     elif args.optimizer == "adam":
         if not args.train_weights_at_the_same_time:
             optimizer = torch.optim.Adam(
-                filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr, weight_decay=args.weight_decay
+                filter(lambda p: p.requires_grad, model.parameters()), lr=args.learning_rate_mask, weight_decay=args.weight_decay
             )
         else:
             parameters = list(model.named_parameters())
@@ -334,7 +340,7 @@ def get_optimizer(args, model):
             weight_params = [v for n, v in parameters if ("score" not in n) and v.requires_grad]
             score_params = [v for n, v in parameters if ("score" in n) and v.requires_grad]
             optimizer1 = torch.optim.Adam(
-                score_params, lr=args.lr, weight_decay=args.weight_decay
+                score_params, lr=args.learning_rate_mask, weight_decay=args.weight_decay
             )
 
             no_decay = ["bias", "LayerNorm.weight"]
@@ -356,7 +362,7 @@ def get_optimizer(args, model):
             return optimizer1, optimizer2
     elif args.optimizer == "adamw":
         optimizer = torch.optim.AdamW(
-            filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr, weight_decay=args.weight_decay
+            filter(lambda p: p.requires_grad, model.parameters()), lr=args.learning_rate_mask, weight_decay=args.weight_decay
         )
     return optimizer, None
 
@@ -555,7 +561,7 @@ def main():
     # optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
 
     args.optimizer = 'adam'
-    args.lr = 12e-3
+    args.learning_rate_mask = 12e-3
     args.K = 20
     args.train_weights_at_the_same_time = True
     args.nesterov = False
@@ -604,7 +610,7 @@ def main():
     for epoch in range(args.num_train_epochs):
         model.train()
         assign_learning_rate(weight_opt, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate)
-        assign_learning_rate(optimizer, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.lr)
+        assign_learning_rate(optimizer, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate_mask)
         for step, batch in enumerate(train_dataloader):
             fn_list = []
             l = 0
