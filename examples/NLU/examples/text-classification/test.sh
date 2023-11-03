@@ -20,8 +20,8 @@ do
             --per_device_train_batch_size $BATCH_SIZE \
             --per_device_eval_batch_size=128  \
             --learning_rate $LEARNING_RATE \
-            --learning_rate_mask $LEARNING_RATE_MASK \  
-            --output_dir ./output/$TASK_NAME/$LEARNING_RATE/$LEARNING_RATE_MASK \
+            --num_train_epochs 5 \
+            --output_dir ./output/$TASK_NAME/$LEARNING_RATE/$LEARNING_RATE_MASK
         done
     done
 done
