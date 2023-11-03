@@ -22,7 +22,7 @@ do
             --learning_rate $LEARNING_RATE \
             --learning_rate_mask $LEARNING_RATE_MASK \  # Make sure this argument is correct
             --num_train_epochs 5 \
-            --output_dir /tmp/$TASK_NAME/$LEARNING_RATE/$LEARNING_RATE_MASK
+            --output_dir ./output/$TASK_NAME/$LEARNING_RATE/$LEARNING_RATE_MASK
         done
     done
 done
