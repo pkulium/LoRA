@@ -13,7 +13,7 @@ do
     do
         for LEARNING_RATE_MASK in "${LEARNING_RATES_MASKS[@]}"
         do
-            python -m pdb run_glue_no_trainer.py \
+            python run_glue_no_trainer.py \
             --model_name_or_path $MODEL \
             --task_name $TASK_NAME \
             --gradient_accumulation_steps=1 \
