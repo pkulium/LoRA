@@ -38,6 +38,9 @@ from transformers import (
     get_scheduler,
     set_seed,
 )
+from utils.schedulers import get_policy, assign_learning_rate
+import numpy as np
+from utils.net_utils import constrainScoreByWhole
 
 
 logger = logging.getLogger(__name__)
@@ -113,8 +116,14 @@ def parse_args():
         default=5e-5,
         help="Initial learning rate (after the potential warmup period) to use.",
     )
+    parser.add_argument(
+        "--learning_rate_mask",
+        type=float,
+        default=5e-5,
+        help="Initial learning rate (after the potential warmup period) to use.",
+    )
     parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay to use.")
-    parser.add_argument("--num_train_epochs", type=int, default=3, help="Total number of training epochs to perform.")
+    parser.add_argument("--num_train_epochs", type=int, default=5, help="Total number of training epochs to perform.")
     parser.add_argument(
         "--max_train_steps",
         type=int,
@@ -156,6 +165,211 @@ def parse_args():
         os.makedirs(args.output_dir, exist_ok=True)
 
     return args
+
+import torch
+from torch import autograd, nn
+import torch.nn.functional as F
+import math
+class VRPGE_Linear(nn.Linear):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scores = nn.Parameter(torch.rand_like(self.weight))
+        self.register_buffer('subnet', torch.zeros_like(self.scores))
+        self.train_weights = False
+        # nn.init.kaiming_uniform_(self.scores, a=math.sqrt(5))
+        score_init_constant = 0.5
+        self.scores.data = (
+                torch.ones_like(self.scores) * score_init_constant
+        )
+        self.prune = True
+        self.register_buffer("stored_mask_0", torch.zeros_like(self.scores))
+        self.register_buffer("stored_mask_1", torch.zeros_like(self.scores))
+        self.j = 0
+
+    @property
+    def clamped_scores(self):
+        return self.scores
+
+    def fix_subnet(self):
+        self.subnet = (torch.rand_like(self.scores) < self.clamped_scores).float()
+
+    def forward(self, x):
+        if self.prune:
+            if not self.train_weights:
+                self.subnet = StraightThroughBinomialSampleNoGrad.apply(self.scores) 
+                if self.j == 0:
+                    self.stored_mask_0.data = (self.subnet-self.scores)/torch.sqrt((self.scores+1e-20)*(1-self.scores+1e-20))
+                else:
+                    self.stored_mask_1.data = (self.subnet-self.scores)/torch.sqrt((self.scores+1e-20)*(1-self.scores+1e-20))
+                w = self.weight * self.subnet
+                x = F.linear(x, w, self.bias)
+            else:
+                w = self.weight * self.subnet
+                x = F.linear(x, w, self.bias)
+        else:
+            x = F.linear(x, self.weight, self.bias)
+        return x
+
+class StraightThroughBinomialSampleNoGrad(autograd.Function):
+    @staticmethod
+    def forward(ctx, scores):
+        output = (torch.rand_like(scores) < scores).float()
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_outputs):
+        return torch.zeros_like(grad_outputs)
+
+def make_VRPGE_layer(layer):
+    new_layer = VRPGE_Lifnear(
+        in_features=layer.in_features,
+        out_features=layer.out_features,
+        bias=layer.bias is None,
+    )
+    
+    new_layer.weight = nn.Parameter(layer.weight.detach())
+    
+    if layer.bias is not None:
+        new_layer.bias = nn.Parameter(layer.bias.detach())
+    
+    return new_layer
+
+
+def make_VRPGE_replace(model, depth=1, path="", verbose=True):
+    if depth > 10:
+        return
+    depth += 1
+        
+    if isinstance(model, nn.Linear) and "attention" in path:
+        if verbose:
+            print(f"Find linear {path}:{key} :", type(module))
+
+        return make_VRPGE_layer(model)
+    
+    for key in dir(model):
+        module = getattr(model, key)
+        module_type = type(module)
+            
+        if not isinstance(module, nn.Module) or module is model:
+            continue
+
+        if isinstance(module, nn.Linear) and "attention" in path:
+            layer = make_VRPGE_layer(module)
+            setattr(model, key, layer)
+            if verbose:
+                print(f"Find linear {path}:{key} :", type(module))
+            
+        elif isinstance(module, nn.ModuleList):
+            for i, elem in enumerate(module):
+                layer = make_VRPGE_replace(elem, depth, path+":"+key+f"[{i}]", verbose=verbose)
+                if layer is not None:
+                    module[i] = layer
+                
+        elif isinstance(module, nn.ModuleDict):
+            for module_key, item in module.items():
+                layer = make_VRPGE_replace(item, depth, path+":"+key+":"+module_key, verbose=verbose)
+                if layer is not None:
+                    module[module_key] = layer
+                
+        else:
+            layer = make_VRPGE_replace(module, depth, path+":"+key, verbose=verbose)
+            if layer is not None:
+                setattr(model, key, layer)
+    
+def get_optimizer(args, model):
+    # for n, v in model.named_parameters():
+    #     if v.requires_grad:
+    #         print("<DEBUG> gradient to", n)
+
+    #     if not v.requires_grad:
+    #         print("<DEBUG> no gradient to", n)
+
+    if args.optimizer == "sgd":
+        if not args.train_weights_at_the_same_time:
+            parameters = list(model.named_parameters())
+            bn_params = [v for n, v in parameters if ("bn" in n) and v.requires_grad]
+            rest_params = [v for n, v in parameters if ("bn" not in n) and v.requires_grad]
+            optimizer = torch.optim.SGD(
+                [
+                    {
+                        "params": bn_params,
+                        "weight_decay": 0 if args.no_bn_decay else args.weight_decay,
+                    },
+                    {"params": rest_params, "weight_decay": args.weight_decay},
+                ],
+                args.learning_rate_mask,
+                momentum=args.momentum,
+                weight_decay=args.weight_decay,
+                nesterov=args.nesterov,
+            )
+        else:
+            parameters = list(model.named_parameters())
+            for n, v in parameters:
+                if ("score" not in n) and v.requires_grad:
+                    print(n, "weight_para")
+            for n, v in parameters:
+                if ("score" in n) and v.requires_grad:
+                    print(n, "score_para")
+            weight_params = [v for n, v in parameters if ("score" not in n) and v.requires_grad]
+            score_params = [v for n, v in parameters if ("score" in n) and v.requires_grad]
+            optimizer1 = torch.optim.SGD(
+                score_params, lr=0.1, weight_decay=1e-6, momentum=0.9
+            )
+            optimizer2 = torch.optim.SGD(
+                weight_params,
+                args.learning_rate,
+                momentum=0.9,
+                weight_decay=5e-4,
+                nesterov=args.nesterov,
+            )
+            return optimizer1, optimizer2
+
+    elif args.optimizer == "adam":
+        if not args.train_weights_at_the_same_time:
+            optimizer = torch.optim.Adam(
+                filter(lambda p: p.requires_grad, model.parameters()), lr=args.learning_rate_mask, weight_decay=args.weight_decay
+            )
+        else:
+            parameters = list(model.named_parameters())
+            for n, v in parameters:
+                if ("score" not in n) and v.requires_grad:
+                    print(n, "weight_para")
+            for n, v in parameters:
+                if ("score" in n) and v.requires_grad:
+                    print(n, "score_para")
+            weight_params = [v for n, v in parameters if ("score" not in n) and v.requires_grad]
+            score_params = [v for n, v in parameters if ("score" in n) and v.requires_grad]
+            optimizer1 = torch.optim.Adam(
+                score_params, lr=args.learning_rate_mask, weight_decay=args.weight_decay
+            )
+
+            no_decay = ["bias", "LayerNorm.weight"]
+            optimizer_grouped_parameters = [
+                {
+                    "params": [p for n, p in model.named_parameters() if "score" not in n and not any(nd in n for nd in no_decay)],
+                    "weight_decay": args.weight_decay,
+                },
+                {
+                    "params": [p for n, p in model.named_parameters() if "score" not in n and any(nd in n for nd in no_decay)],
+                    "weight_decay": 0.0,
+                },
+            ]
+            optimizer2 = torch.optim.AdamW(
+                optimizer_grouped_parameters,
+                args.learning_rate,
+            )
+
+            return optimizer1, optimizer2
+    elif args.optimizer == "adamw":
+        optimizer = torch.optim.AdamW(
+            filter(lambda p: p.requires_grad, model.parameters()), lr=args.learning_rate_mask, weight_decay=args.weight_decay
+        )
+    return optimizer, None
+
+def calculateGrad(model, fn_avg, fn_list, args):
+    for n, m in model.named_modules():
+        if hasattr(m, "scores") and m.prune:
+            m.scores.grad.data += 1/(args.K-1)*(fn_list[0] - fn_avg)*getattr(m, 'stored_mask_0') + 1/(args.K-1)*(fn_list[1] - fn_avg)*getattr(m, 'stored_mask_1')
 
 
 def main():
@@ -238,11 +452,13 @@ def main():
     # download model & vocab.
     config = AutoConfig.from_pretrained(args.model_name_or_path, num_labels=num_labels, finetuning_task=args.task_name)
     tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=not args.use_slow_tokenizer)
+    
     model = AutoModelForSequenceClassification.from_pretrained(
         args.model_name_or_path,
         from_tf=bool(".ckpt" in args.model_name_or_path),
         config=config,
     )
+    make_VRPGE_replace(model, verbose=True)
 
     # Preprocessing the datasets
     if args.task_name is not None:
@@ -329,25 +545,34 @@ def main():
 
     # Optimizer
     # Split weights in two groups, one with weight decay and the other not.
-    no_decay = ["bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
-            "weight_decay": args.weight_decay,
-        },
-        {
-            "params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)],
-            "weight_decay": 0.0,
-        },
-    ]
-    optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
+
+    # no_decay = ["bias", "LayerNorm.weight"]
+    # optimizer_grouped_parameters = [
+    #     {
+    #         "params": [p for n, p in model.named_parameters() if "scores" not in n and not any(nd in n for nd in no_decay)],
+    #         "weight_decay": args.weight_decay,
+    #     },
+    #     {
+    #         "params": [p for n, p in model.named_parameters() if "scores" not in n and any(nd in n for nd in no_decay)],
+    #         "weight_decay": 0.0,
+    #     },
+        
+    # ]
+    # optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate)
+
+    args.optimizer = 'adam'
+    args.learning_rate_mask = 12e-3
+    args.K = 20
+    args.train_weights_at_the_same_time = True
+    args.nesterov = False
+    optimizer, weight_opt = get_optimizer(args, model)
 
     # Prepare everything with our `accelerator`.
-    model, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
-        model, optimizer, train_dataloader, eval_dataloader
+    model, weight_opt, optimizer, train_dataloader, eval_dataloader = accelerator.prepare(
+        model, weight_opt, optimizer, train_dataloader, eval_dataloader
     )
 
-    # Note -> the training dataloader needs to be prepared before we grab his length below (cause its length will be
+    # Note -> the training dataloader needs to be prepared before we grab h`is length below (cause its length will be
     # shorter in multiprocess)
 
     # Scheduler and math around the number of training steps.
@@ -384,20 +609,32 @@ def main():
 
     for epoch in range(args.num_train_epochs):
         model.train()
+        assign_learning_rate(weight_opt, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate)
+        assign_learning_rate(optimizer, 0.5 * (1 + np.cos(np.pi * epoch / args.num_train_epochs)) * args.learning_rate_mask)
         for step, batch in enumerate(train_dataloader):
-            outputs = model(**batch)
-            loss = outputs.loss
-            loss = loss / args.gradient_accumulation_steps
-            accelerator.backward(loss)
-            if step % args.gradient_accumulation_steps == 0 or step == len(train_dataloader) - 1:
-                optimizer.step()
-                lr_scheduler.step()
+            fn_list = []
+            l = 0
+            if optimizer is not None:
                 optimizer.zero_grad()
-                progress_bar.update(1)
-                completed_steps += 1
-
-            if completed_steps >= args.max_train_steps:
-                break
+            if weight_opt is not None:
+                weight_opt.zero_grad()
+            for j in range(args.K):
+                args.j = j
+                outputs = model(**batch)
+                original_loss = outputs.loss
+                loss = original_loss/args.K
+                fn_list.append(loss.item()*args.K)
+                accelerator.backward(loss, retain_graph=True)
+                l = l + loss.item()
+            fn_avg = l
+            calculateGrad(model, fn_avg, fn_list, args)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 3)
+            if optimizer is not None:
+                optimizer.step()
+            if weight_opt is not None:
+                weight_opt.step()
+            with torch.no_grad():
+                constrainScoreByWhole(model, None, None)
 
         model.eval()
         for step, batch in enumerate(eval_dataloader):
@@ -410,6 +647,18 @@ def main():
 
         eval_metric = metric.compute()
         logger.info(f"epoch {epoch}: {eval_metric}")
+
+    model.eval()
+    for step, batch in enumerate(eval_dataloader):
+        outputs = model(**batch)
+        predictions = outputs.logits.argmax(dim=-1)
+        metric.add_batch(
+            predictions=accelerator.gather(predictions),
+            references=accelerator.gather(batch["labels"]),
+        )
+
+    eval_metric = metric.compute()
+    logger.info(f"epoch {epoch}: {eval_metric}")
 
     if args.output_dir is not None:
         accelerator.wait_for_everyone()
